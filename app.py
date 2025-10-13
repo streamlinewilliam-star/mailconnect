@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import base64
 import time
+import random
 import re
 import json
-import random
+import pytz
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from google_auth_oauthlib.flow import Flow
@@ -14,354 +15,155 @@ from googleapiclient.discovery import build
 # ========================================
 # Streamlit Page Setup
 # ========================================
-st.set_page_config(page_title="Gmail Mail Merge", layout="wide")
-st.title("📧 Gmail Mail Merge Tool (with Follow-up Replies + Draft Save)")
+st.set_page_config(page_title="Gmail Mail Merge", layout="centered", page_icon="📧")
+st.title("📧 Gmail Mail Merge")
 
 # ========================================
-# Gmail API Setup
+# File Upload
 # ========================================
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-    "https://www.googleapis.com/auth/gmail.labels",
-    "https://www.googleapis.com/auth/gmail.compose",
-]
-
-CLIENT_CONFIG = {
-    "web": {
-        "client_id": st.secrets["gmail"]["client_id"],
-        "client_secret": st.secrets["gmail"]["client_secret"],
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": [st.secrets["gmail"]["redirect_uri"]],
-    }
-}
-
-# ========================================
-# Smart Email Extractor
-# ========================================
-EMAIL_REGEX = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
-
-def extract_email(value: str):
-    if not value:
-        return None
-    match = EMAIL_REGEX.search(str(value))
-    return match.group(0) if match else None
-
-# ========================================
-# Gmail Label Helper
-# ========================================
-def get_or_create_label(service, label_name="Mail Merge Sent"):
-    try:
-        labels = service.users().labels().list(userId="me").execute().get("labels", [])
-        for label in labels:
-            if label["name"].lower() == label_name.lower():
-                return label["id"]
-
-        label_obj = {
-            "name": label_name,
-            "labelListVisibility": "labelShow",
-            "messageListVisibility": "show",
-        }
-        created_label = service.users().labels().create(userId="me", body=label_obj).execute()
-        return created_label["id"]
-
-    except Exception as e:
-        st.warning(f"Could not get/create label: {e}")
-        return None
-
-# ========================================
-# Bold + Link Converter
-# ========================================
-def convert_bold(text):
-    if not text:
-        return ""
-    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    text = re.sub(
-        r"\[(.*?)\]\((https?://[^\s)]+)\)",
-        r'<a href="\2" style="color:#1a73e8; text-decoration:underline;" target="_blank">\1</a>',
-        text,
-    )
-    text = text.replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;")
-    return f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">
-            {text}
-        </body>
-    </html>
-    """
-
-# ========================================
-# OAuth Flow
-# ========================================
-if "creds" not in st.session_state:
-    st.session_state["creds"] = None
-
-if st.session_state["creds"]:
-    creds = Credentials.from_authorized_user_info(
-        json.loads(st.session_state["creds"]), SCOPES
-    )
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    st.success(f"✅ Loaded {len(df)} records from file.")
 else:
-    code = st.experimental_get_query_params().get("code", None)
-    if code:
-        flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
-        flow.redirect_uri = st.secrets["gmail"]["redirect_uri"]
-        flow.fetch_token(code=code[0])
+    st.info("Please upload your mail merge CSV to begin.")
+
+# ========================================
+# Gmail OAuth Setup
+# ========================================
+CLIENT_SECRETS_FILE = "client_secret.json"
+SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+
+def authenticate_gmail():
+    flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=SCOPES, redirect_uri="urn:ietf:wg:oauth:2.0:oob")
+    auth_url, _ = flow.authorization_url(prompt="consent")
+    st.markdown(f"[Authorize Gmail here]({auth_url})")
+    auth_code = st.text_input("Enter the authorization code:")
+    if auth_code:
+        flow.fetch_token(code=auth_code)
         creds = flow.credentials
-        st.session_state["creds"] = creds.to_json()
-        st.rerun()
-    else:
-        flow = Flow.from_client_config(CLIENT_CONFIG, scopes=SCOPES)
-        flow.redirect_uri = st.secrets["gmail"]["redirect_uri"]
-        auth_url, _ = flow.authorization_url(
-            prompt="consent", access_type="offline", include_granted_scopes="true"
-        )
-        st.markdown(
-            f"### 🔑 Please [authorize the app]({auth_url}) to send emails using your Gmail account."
-        )
-        st.stop()
-
-# Build Gmail API client
-creds = Credentials.from_authorized_user_info(json.loads(st.session_state["creds"]), SCOPES)
-service = build("gmail", "v1", credentials=creds)
+        st.success("✅ Gmail authenticated successfully!")
+        return creds
+    return None
 
 # ========================================
-# Upload Recipients
+# Gmail Message Builder
 # ========================================
-st.header("📤 Upload Recipient List")
-st.info("⚠️ Upload maximum of **70–80 contacts** for smooth operation and to protect your Gmail account.")
+def create_message(sender, to, subject, message_text, thread_id=None, reply_to=None):
+    message = MIMEText(message_text, "html")
+    message["to"] = to
+    message["from"] = sender
+    message["subject"] = subject
+    if reply_to:
+        message["In-Reply-To"] = reply_to
+        message["References"] = reply_to
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    body = {"raw": raw_message}
+    if thread_id:
+        body["threadId"] = thread_id
+    return body
 
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+def send_message(service, user_id, message_body):
+    try:
+        sent_message = service.users().messages().send(userId=user_id, body=message_body).execute()
+        return sent_message
+    except Exception as e:
+        st.error(f"Error sending message: {e}")
+        return None
 
-if uploaded_file:
-    if uploaded_file.name.endswith("csv"):
-        df = pd.read_csv(uploaded_file)
+# ========================================
+# Label & Timing Options
+# ========================================
+st.header("🏷️ Label & Timing Options")
+
+label_name = st.text_input("Gmail label to apply (new emails only)", "Mail Merge Sent")
+delay = st.slider("Delay between emails (seconds)", 5, 60, 30)
+
+# ========================================
+# ✅ Enhanced Estimated Completion Time (±10%) — Local Time Fixed
+# ========================================
+if uploaded_file is not None:
+    try:
+        total_contacts = len(df)
+        avg_delay = delay
+
+        # Randomization bounds
+        min_delay = avg_delay * 0.9
+        max_delay = avg_delay * 1.1
+
+        # Total time bounds
+        min_total_seconds = total_contacts * min_delay
+        max_total_seconds = total_contacts * max_delay
+        avg_total_seconds = total_contacts * avg_delay
+
+        avg_total_minutes = avg_total_seconds / 60
+        avg_total_hours = avg_total_minutes / 60
+
+        # ✅ Local time (IST)
+        local_tz = pytz.timezone("Asia/Kolkata")
+        now_local = datetime.now(local_tz)
+
+        eta_min = now_local + timedelta(seconds=min_total_seconds)
+        eta_max = now_local + timedelta(seconds=max_total_seconds)
+
+        eta_min_str = eta_min.strftime("%I:%M %p")
+        eta_max_str = eta_max.strftime("%I:%M %p")
+
+        if avg_total_hours >= 1:
+            duration_text = f"⏳ {avg_total_hours:.2f} hr (±10%)"
+        else:
+            duration_text = f"⏳ {avg_total_minutes:.1f} min (±10%)"
+
+        st.caption(
+            f"📋 Total: {total_contacts} | {duration_text} | 🕒 ETA: **{eta_min_str} – {eta_max_str} (IST)**"
+        )
+    except Exception:
+        st.caption("⚠️ ETA unavailable — check timezone or input data.")
+
+# ========================================
+# Sending Mode Options
+# ========================================
+send_mode = st.radio(
+    "Choose sending mode",
+    ["New Email", "Follow-up (Reply)", "Save as Draft"],
+    horizontal=False,
+)
+
+# ========================================
+# Send / Draft Execution
+# ========================================
+if st.button("🚀 Send Emails / Save Drafts"):
+    if uploaded_file is None:
+        st.error("Please upload your CSV file first.")
     else:
-        df = pd.read_excel(uploaded_file)
+        creds = authenticate_gmail()
+        if creds:
+            service = build("gmail", "v1", credentials=creds)
+            sender = "me"
 
-    st.write("✅ Preview of uploaded data:")
-    st.dataframe(df.head())
-    st.info("📌 Include 'ThreadId' and 'RfcMessageId' columns for follow-ups if needed.")
+            for index, row in df.iterrows():
+                to = row.get("To")
+                subject = row.get("Subject", "")
+                message_text = row.get("Body", "")
+                thread_id = row.get("ThreadId", None)
+                reply_to = row.get("MessageId", None)
 
-    # ========================================
-    # Email Template
-    # ========================================
-    st.header("✍️ Compose Your Email")
-    subject_template = st.text_input("Subject", "Hello {Name}")
-    body_template = st.text_area(
-        "Body (supports **bold**, [link](https://example.com), and line breaks)",
-        """Dear {Name},
-
-Welcome to our **Mail Merge App** demo.
-
-You can add links like [Visit Google](https://google.com)
-and preserve formatting exactly.
-
-Thanks,  
-**Your Company**""",
-        height=250,
-    )
-
-    # ========================================
-    # Preview Section
-    # ========================================
-    st.subheader("👁️ Preview Email")
-    if not df.empty:
-        recipient_options = df["Email"].astype(str).tolist()
-        selected_email = st.selectbox("Select recipient to preview", recipient_options)
-        try:
-            preview_row = df[df["Email"] == selected_email].iloc[0]
-            preview_subject = subject_template.format(**preview_row)
-            preview_body = body_template.format(**preview_row)
-            preview_html = convert_bold(preview_body)
-            st.markdown(f"**Subject:** {preview_subject}")
-            st.markdown("---")
-            st.markdown(preview_html, unsafe_allow_html=True)
-        except KeyError as e:
-            st.error(f"⚠️ Missing column in data: {e}")
-
-    # ========================================
-    # Label & Timing Options
-    # ========================================
-    st.header("🏷️ Label & Timing Options")
-    label_name = st.text_input("Gmail label to apply (new emails only)", value="Mail Merge Sent")
-
-    delay = st.slider(
-        "Delay between emails (seconds)",
-        min_value=30,
-        max_value=300,
-        value=30,
-        step=5,
-        help="Minimum 30 seconds delay required for safe Gmail sending. Applies to New, Follow-up, and Draft modes."
-    )
-
-    # ========================================
-    # ✅ Enhanced Estimated Completion Time (±10% range)
-    # ========================================
-    if uploaded_file is not None:
-        try:
-            total_contacts = len(df)
-            avg_delay = delay
-
-            # Randomization bounds
-            min_delay = avg_delay * 0.9
-            max_delay = avg_delay * 1.1
-
-            # Total time bounds
-            min_total_seconds = total_contacts * min_delay
-            max_total_seconds = total_contacts * max_delay
-            avg_total_seconds = total_contacts * avg_delay
-
-            avg_total_minutes = avg_total_seconds / 60
-            avg_total_hours = avg_total_minutes / 60
-
-            # ETA range (current time + total duration)
-            now = datetime.now()
-            eta_min = now + timedelta(seconds=min_total_seconds)
-            eta_max = now + timedelta(seconds=max_total_seconds)
-
-            eta_min_str = eta_min.strftime("%I:%M %p")
-            eta_max_str = eta_max.strftime("%I:%M %p")
-
-            # Compact summary text
-            if avg_total_hours >= 1:
-                duration_text = f"⏳ {avg_total_hours:.2f} hr (±10%)"
-            else:
-                duration_text = f"⏳ {avg_total_minutes:.1f} min (±10%)"
-
-            st.caption(
-                f"📋 Total: {total_contacts} | {duration_text} | 🕒 ETA: **{eta_min_str} – {eta_max_str}**"
-            )
-        except Exception:
-            pass
-
-    # ========================================
-    # Send Mode (with Save Draft)
-    # ========================================
-    send_mode = st.radio(
-        "Choose sending mode",
-        ["🆕 New Email", "↩️ Follow-up (Reply)", "💾 Save as Draft"]
-    )
-
-    # ========================================
-    # Main Send/Draft Button
-    # ========================================
-    if st.button("🚀 Send Emails / Save Drafts"):
-        label_id = get_or_create_label(service, label_name)
-        sent_count = 0
-        skipped, errors = [], []
-
-        with st.spinner("📨 Processing emails... please wait."):
-
-            if "ThreadId" not in df.columns:
-                df["ThreadId"] = None
-            if "RfcMessageId" not in df.columns:
-                df["RfcMessageId"] = None
-
-            for idx, row in df.iterrows():
-                to_addr = extract_email(str(row.get("Email", "")).strip())
-                if not to_addr:
-                    skipped.append(row.get("Email"))
+                if send_mode == "Follow-up (Reply)" and not thread_id:
+                    st.warning(f"⚠️ Row {index + 1}: Missing thread/message ID, skipped.")
                     continue
 
-                try:
-                    subject = subject_template.format(**row)
-                    body_html = convert_bold(body_template.format(**row))
-                    message = MIMEText(body_html, "html")
-                    message["To"] = to_addr
-                    message["Subject"] = subject
+                message_body = create_message(sender, to, subject, message_text, thread_id, reply_to)
 
-                    msg_body = {}
+                if send_mode == "Save as Draft":
+                    service.users().drafts().create(userId="me", body={"message": message_body}).execute()
+                    st.info(f"💾 Draft saved for: {to}")
+                else:
+                    result = send_message(service, "me", message_body)
+                    if result:
+                        st.success(f"✅ Sent to: {to}")
 
-                    # ===== Follow-up (Reply) mode =====
-                    if send_mode == "↩️ Follow-up (Reply)" and "ThreadId" in row and "RfcMessageId" in row:
-                        thread_id = str(row["ThreadId"]).strip()
-                        rfc_id = str(row["RfcMessageId"]).strip()
+                randomized_delay = random.uniform(delay * 0.9, delay * 1.1)
+                time.sleep(randomized_delay)
 
-                        if thread_id and thread_id.lower() != "nan" and rfc_id:
-                            message["In-Reply-To"] = rfc_id
-                            message["References"] = rfc_id
-                            raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-                            msg_body = {"raw": raw, "threadId": thread_id}
-                        else:
-                            raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-                            msg_body = {"raw": raw}
-                    else:
-                        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-                        msg_body = {"raw": raw}
-
-                    # ===============================
-                    # ✉️ Send or Save as Draft
-                    # ===============================
-                    if send_mode == "💾 Save as Draft":
-                        draft = service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
-                        sent_msg = draft.get("message", {})
-                        st.info(f"📝 Draft saved for {to_addr}")
-                    else:
-                        sent_msg = service.users().messages().send(userId="me", body=msg_body).execute()
-
-                    # 🕒 Delay between operations
-                    if delay > 0:
-                        time.sleep(random.uniform(delay * 0.9, delay * 1.1))
-
-                    # ✅ RFC Message-ID Fetch (fixed logic)
-                    message_id_header = None
-                    for attempt in range(5):
-                        time.sleep(random.uniform(2, 4))
-                        try:
-                            msg_detail = service.users().messages().get(
-                                userId="me",
-                                id=sent_msg.get("id", ""),
-                                format="metadata",
-                                metadataHeaders=["Message-ID"],
-                            ).execute()
-
-                            headers = msg_detail.get("payload", {}).get("headers", [])
-                            for h in headers:
-                                if h.get("name", "").lower() == "message-id":
-                                    message_id_header = h.get("value")
-                                    break
-                            if message_id_header:
-                                break
-                        except Exception:
-                            continue
-
-                    # 🏷️ Label for new emails
-                    if send_mode == "🆕 New Email" and label_id:
-                        try:
-                            service.users().messages().modify(
-                                userId="me",
-                                id=sent_msg.get("id", ""),
-                                body={"addLabelIds": [label_id]},
-                            ).execute()
-                        except Exception:
-                            pass
-
-                    df.loc[idx, "ThreadId"] = sent_msg.get("threadId", "")
-                    df.loc[idx, "RfcMessageId"] = message_id_header or ""
-
-                    sent_count += 1
-
-                except Exception as e:
-                    errors.append((to_addr, str(e)))
-
-        # ========================================
-        # Summary
-        # ========================================
-        if send_mode == "💾 Save as Draft":
-            st.success(f"📝 Saved {sent_count} draft(s) to your Gmail Drafts folder.")
-        else:
-            st.success(f"✅ Successfully processed {sent_count} emails.")
-
-        if skipped:
-            st.warning(f"⚠️ Skipped {len(skipped)} invalid emails: {skipped}")
-        if errors:
-            st.error(f"❌ Failed to process {len(errors)}: {errors}")
-
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇️ Download Updated CSV (with ThreadId + RfcMessageId)",
-            csv,
-            "updated_mailmerge.csv",
-            "text/csv",
-        )
+            st.balloons()
+            st.success("🎉 All emails processed successfully!")

@@ -72,7 +72,7 @@ def get_or_create_label(service, label_name="Mail Merge Sent"):
         return None
 
 # ========================================
-# Bold + Link Converter (with Verdana)
+# Bold + Link Converter (Verdana)
 # ========================================
 def convert_bold(text):
     if not text:
@@ -359,15 +359,31 @@ Thanks,
         if errors:
             st.error(f"❌ Failed to process {len(errors)}: {errors}")
 
-        csv = df.to_csv(index=False).encode("utf-8")
+        # ========================================
+        # CSV Download only for New Email mode
+        # ========================================
+        if send_mode == "🆕 New Email":
+            csv = df.to_csv(index=False).encode("utf-8")
+            safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
+            file_name = f"{safe_label}.csv"
 
-        # Download file name based on label (sanitized)
-        safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
-        file_name = f"{safe_label}.csv"
+            # Visible download button
+            st.download_button(
+                "⬇️ Download Updated CSV (Click if not auto-downloaded)",
+                csv,
+                file_name,
+                "text/csv",
+                key="manual_download"
+            )
 
-        st.download_button(
-            "⬇️ Download Updated CSV (with ThreadId + RfcMessageId)",
-            csv,
-            file_name,
-            "text/csv",
-        )
+            # Auto-download via hidden link
+            b64 = base64.b64encode(csv).decode()
+            st.markdown(
+                f'''
+                <a id="auto-download-link" href="data:file/csv;base64,{b64}" download="{file_name}"></a>
+                <script>
+                    document.getElementById("auto-download-link").click();
+                </script>
+                ''',
+                unsafe_allow_html=True
+            )

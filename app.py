@@ -246,8 +246,17 @@ Thanks,
                         draft = service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
                         sent_msg = draft.get("message", {})
                         st.info(f"📝 Draft saved for {to_addr}")
+
+                        # 🕒 Add same delay for drafts
+                        if delay > 0:
+                            time.sleep(random.uniform(delay * 0.8, delay * 1.2))
+
                     else:
                         sent_msg = service.users().messages().send(userId="me", body=msg_body).execute()
+
+                        # 🕒 Delay between sends
+                        if delay > 0:
+                            time.sleep(random.uniform(delay * 0.8, delay * 1.2))
 
                     # ✅ RFC Message-ID Fetch (same logic)
                     message_id_header = None
@@ -286,8 +295,6 @@ Thanks,
                     df.loc[idx, "RfcMessageId"] = message_id_header or ""
 
                     sent_count += 1
-                    if send_mode != "💾 Save as Draft":
-                        time.sleep(delay)
 
                 except Exception as e:
                     errors.append((to_addr, str(e)))

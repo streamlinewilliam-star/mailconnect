@@ -316,16 +316,22 @@ Thanks,
                         except Exception:
                             continue
 
-                    # 🏷️ Label for new emails
-                    if send_mode == "🆕 New Email" and label_id:
-                        try:
-                            service.users().messages().modify(
-                                userId="me",
-                                id=sent_msg.get("id", ""),
-                                body={"addLabelIds": [label_id]},
-                            ).execute()
-                        except Exception:
-                            pass
+                    # 🏷️ Apply label to new emails (reliable)
+                    if send_mode == "🆕 New Email" and label_id and sent_msg.get("id"):
+                        success = False
+                        for attempt in range(3):
+                            try:
+                                service.users().messages().modify(
+                                    userId="me",
+                                    id=sent_msg["id"],
+                                    body={"addLabelIds": [label_id]},
+                                ).execute()
+                                success = True
+                                break
+                            except Exception:
+                                time.sleep(1)  # wait a bit before retrying
+                        if not success:
+                            st.warning(f"⚠️ Could not apply label to {to_addr}")
 
                     df.loc[idx, "ThreadId"] = sent_msg.get("threadId", "")
                     df.loc[idx, "RfcMessageId"] = message_id_header or ""

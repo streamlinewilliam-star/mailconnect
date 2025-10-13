@@ -128,12 +128,11 @@ service = build("gmail", "v1", credentials=creds)
 # Upload Recipients
 # ========================================
 st.header("📤 Upload Recipient List")
+st.info("⚠️ Upload maximum of 70–80 records for smooth performance and to protect your Gmail account from throttling.")
+
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
-    # ⚠️ Add safety message
-    st.warning("⚠️ Upload maximum of 70–80 rows for smooth run and to protect your account from Gmail rate limits.")
-
     if uploaded_file.name.endswith("csv"):
         df = pd.read_csv(uploaded_file)
     else:
@@ -181,17 +180,19 @@ Thanks,
             st.error(f"⚠️ Missing column in data: {e}")
 
     # ========================================
-    # Label & Delay Options
+    # Label & Timing Options
     # ========================================
     st.header("🏷️ Label & Timing Options")
     label_name = st.text_input("Gmail label to apply (new emails only)", value="Mail Merge Sent")
-    delay = st.number_input(
+
+    # Delay slider (cannot go below 30)
+    delay = st.slider(
         "Delay between emails (seconds)",
         min_value=30,
         max_value=300,
-        value=60,
+        value=30,
         step=5,
-        help="Applies to New, Follow-up, and Draft modes. Minimum 30 seconds for Gmail compliance."
+        help="Minimum 30 seconds delay required for safe Gmail sending. Applies to New, Follow-up, and Draft modes."
     )
 
     # ========================================
@@ -211,7 +212,6 @@ Thanks,
         skipped, errors = [], []
 
         with st.spinner("📨 Processing emails... please wait."):
-
             if "ThreadId" not in df.columns:
                 df["ThreadId"] = None
             if "RfcMessageId" not in df.columns:
@@ -231,7 +231,6 @@ Thanks,
                     message["Subject"] = subject
 
                     msg_body = {}
-
                     # ===== Follow-up (Reply) mode =====
                     if send_mode == "↩️ Follow-up (Reply)" and "ThreadId" in row and "RfcMessageId" in row:
                         thread_id = str(row["ThreadId"]).strip()
@@ -257,15 +256,15 @@ Thanks,
                         sent_msg = draft.get("message", {})
                         st.info(f"📝 Draft saved for {to_addr}")
 
-                        if delay > 0:
-                            time.sleep(random.uniform(delay * 0.8, delay * 1.2))
+                        # Delay between drafts
+                        time.sleep(random.uniform(delay * 0.8, delay * 1.2))
                     else:
                         sent_msg = service.users().messages().send(userId="me", body=msg_body).execute()
 
-                        if delay > 0:
-                            time.sleep(random.uniform(delay * 0.8, delay * 1.2))
+                        # Delay between sends
+                        time.sleep(random.uniform(delay * 0.8, delay * 1.2))
 
-                    # ✅ RFC Message-ID Fetch
+                    # ✅ Fetch RFC Message-ID
                     message_id_header = None
                     for attempt in range(5):
                         time.sleep(random.uniform(2, 4))
@@ -278,8 +277,8 @@ Thanks,
                             ).execute()
 
                             message_id_header = next(
-                                (h["value"] for h in msg_detail.get("payload", {}).get("headers", [])
-                                 if h["name"].lower() == "message-id"),
+                                (h["value"] for h in msg_detail.get("payload", {}).get("headers", []))
+                                if h["name"].lower() == "message-id" else None,
                                 None,
                             )
                             if message_id_header:
@@ -288,7 +287,6 @@ Thanks,
                             pass
 
                     if send_mode == "🆕 New Email" and label_id:
-                        time.sleep(1)
                         try:
                             service.users().messages().modify(
                                 userId="me",
@@ -300,7 +298,6 @@ Thanks,
 
                     df.loc[idx, "ThreadId"] = sent_msg.get("threadId", "")
                     df.loc[idx, "RfcMessageId"] = message_id_header or ""
-
                     sent_count += 1
 
                 except Exception as e:

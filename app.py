@@ -128,7 +128,7 @@ service = build("gmail", "v1", credentials=creds)
 # Upload Recipients
 # ========================================
 st.header("📤 Upload Recipient List")
-st.info("⚠️ Upload maximum of 70–80 records for smooth performance and to protect your Gmail account from throttling.")
+st.info("⚠️ Upload maximum of **70–80 contacts** for smooth operation and to protect your Gmail account.")
 
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
@@ -185,7 +185,6 @@ Thanks,
     st.header("🏷️ Label & Timing Options")
     label_name = st.text_input("Gmail label to apply (new emails only)", value="Mail Merge Sent")
 
-    # Delay slider (cannot go below 30)
     delay = st.slider(
         "Delay between emails (seconds)",
         min_value=30,
@@ -212,6 +211,7 @@ Thanks,
         skipped, errors = [], []
 
         with st.spinner("📨 Processing emails... please wait."):
+
             if "ThreadId" not in df.columns:
                 df["ThreadId"] = None
             if "RfcMessageId" not in df.columns:
@@ -231,6 +231,7 @@ Thanks,
                     message["Subject"] = subject
 
                     msg_body = {}
+
                     # ===== Follow-up (Reply) mode =====
                     if send_mode == "↩️ Follow-up (Reply)" and "ThreadId" in row and "RfcMessageId" in row:
                         thread_id = str(row["ThreadId"]).strip()
@@ -255,16 +256,14 @@ Thanks,
                         draft = service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
                         sent_msg = draft.get("message", {})
                         st.info(f"📝 Draft saved for {to_addr}")
-
-                        # Delay between drafts
-                        time.sleep(random.uniform(delay * 0.8, delay * 1.2))
                     else:
                         sent_msg = service.users().messages().send(userId="me", body=msg_body).execute()
 
-                        # Delay between sends
-                        time.sleep(random.uniform(delay * 0.8, delay * 1.2))
+                    # 🕒 Delay between operations
+                    if delay > 0:
+                        time.sleep(random.uniform(delay * 0.9, delay * 1.1))
 
-                    # ✅ Fetch RFC Message-ID
+                    # ✅ RFC Message-ID Fetch (fixed logic)
                     message_id_header = None
                     for attempt in range(5):
                         time.sleep(random.uniform(2, 4))
@@ -276,16 +275,17 @@ Thanks,
                                 metadataHeaders=["Message-ID"],
                             ).execute()
 
-                            message_id_header = next(
-                                (h["value"] for h in msg_detail.get("payload", {}).get("headers", []))
-                                if h["name"].lower() == "message-id" else None,
-                                None,
-                            )
+                            headers = msg_detail.get("payload", {}).get("headers", [])
+                            for h in headers:
+                                if h.get("name", "").lower() == "message-id":
+                                    message_id_header = h.get("value")
+                                    break
                             if message_id_header:
                                 break
                         except Exception:
-                            pass
+                            continue
 
+                    # 🏷️ Label for new emails
                     if send_mode == "🆕 New Email" and label_id:
                         try:
                             service.users().messages().modify(
@@ -298,6 +298,7 @@ Thanks,
 
                     df.loc[idx, "ThreadId"] = sent_msg.get("threadId", "")
                     df.loc[idx, "RfcMessageId"] = message_id_header or ""
+
                     sent_count += 1
 
                 except Exception as e:
@@ -309,7 +310,7 @@ Thanks,
         if send_mode == "💾 Save as Draft":
             st.success(f"📝 Saved {sent_count} draft(s) to your Gmail Drafts folder.")
         else:
-            st.success(f"✅ Successfully sent {sent_count} emails.")
+            st.success(f"✅ Successfully processed {sent_count} emails.")
 
         if skipped:
             st.warning(f"⚠️ Skipped {len(skipped)} invalid emails: {skipped}")

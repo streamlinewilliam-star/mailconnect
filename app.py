@@ -72,7 +72,7 @@ def get_or_create_label(service, label_name="Mail Merge Sent"):
         return None
 
 # ========================================
-# Bold + Link Converter
+# Bold + Link Converter (with Verdana)
 # ========================================
 def convert_bold(text):
     if not text:
@@ -86,7 +86,7 @@ def convert_bold(text):
     text = text.replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;")
     return f"""
     <html>
-        <body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">
+        <body style="font-family: Verdana, sans-serif; font-size: 14px; line-height: 1.6;">
             {text}
         </body>
     </html>
@@ -175,7 +175,12 @@ Thanks,
             preview_subject = subject_template.format(**preview_row)
             preview_body = body_template.format(**preview_row)
             preview_html = convert_bold(preview_body)
-            st.markdown(f"**Subject:** {preview_subject}")
+
+            # Subject line preview in Verdana
+            st.markdown(
+                f'<span style="font-family: Verdana, sans-serif; font-size:16px;"><b>Subject:</b> {preview_subject}</span>',
+                unsafe_allow_html=True
+            )
             st.markdown("---")
             st.markdown(preview_html, unsafe_allow_html=True)
         except KeyError as e:
@@ -204,7 +209,7 @@ Thanks,
     if eta_ready:
         try:
             total_contacts = len(df)
-            avg_delay = delay  # same delay for all modes
+            avg_delay = delay
             total_seconds = total_contacts * avg_delay
             total_minutes = total_seconds / 60
 
@@ -294,7 +299,7 @@ Thanks,
                     if delay > 0:
                         time.sleep(random.uniform(delay * 0.9, delay * 1.1))
 
-                    # ✅ RFC Message-ID Fetch (fixed logic)
+                    # ✅ RFC Message-ID Fetch
                     message_id_header = None
                     for attempt in range(5):
                         time.sleep(random.uniform(2, 4))
@@ -316,7 +321,7 @@ Thanks,
                         except Exception:
                             continue
 
-                    # 🏷️ Apply label to new emails (reliable)
+                    # 🏷️ Apply label to new emails
                     if send_mode == "🆕 New Email" and label_id and sent_msg.get("id"):
                         success = False
                         for attempt in range(3):
@@ -329,7 +334,7 @@ Thanks,
                                 success = True
                                 break
                             except Exception:
-                                time.sleep(1)  # wait a bit before retrying
+                                time.sleep(1)
                         if not success:
                             st.warning(f"⚠️ Could not apply label to {to_addr}")
 

@@ -5,7 +5,6 @@ import time
 import re
 import json
 import random
-from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
@@ -196,42 +195,23 @@ Thanks,
     )
 
     # ========================================
-    # ✅ Enhanced Estimated Completion Time (±10% range)
+    # ✅ Estimated Completion Time (new feature)
     # ========================================
     if uploaded_file is not None:
         try:
             total_contacts = len(df)
-            avg_delay = delay
+            avg_delay = delay  # seconds per email
+            total_seconds = total_contacts * avg_delay
+            total_minutes = total_seconds / 60
+            total_hours = total_minutes / 60
+            completion_time = time.strftime("%I:%M %p", time.localtime(time.time() + total_seconds))
 
-            # Randomization bounds
-            min_delay = avg_delay * 0.9
-            max_delay = avg_delay * 1.1
-
-            # Total time bounds
-            min_total_seconds = total_contacts * min_delay
-            max_total_seconds = total_contacts * max_delay
-            avg_total_seconds = total_contacts * avg_delay
-
-            avg_total_minutes = avg_total_seconds / 60
-            avg_total_hours = avg_total_minutes / 60
-
-            # ETA range (current time + total duration)
-            now = datetime.now()
-            eta_min = now + timedelta(seconds=min_total_seconds)
-            eta_max = now + timedelta(seconds=max_total_seconds)
-
-            eta_min_str = eta_min.strftime("%I:%M %p")
-            eta_max_str = eta_max.strftime("%I:%M %p")
-
-            # Compact summary text
-            if avg_total_hours >= 1:
-                duration_text = f"⏳ {avg_total_hours:.2f} hr (±10%)"
-            else:
-                duration_text = f"⏳ {avg_total_minutes:.1f} min (±10%)"
-
-            st.caption(
-                f"📋 Total: {total_contacts} | {duration_text} | 🕒 ETA: **{eta_min_str} – {eta_max_str}**"
+            est_time_text = (
+                f"📋 Total: {total_contacts} | "
+                f"⏳ Duration: {total_hours:.2f} hr" if total_hours >= 1 else
+                f"📋 Total: {total_contacts} | ⏳ Duration: {total_minutes:.1f} min"
             )
+            st.caption(f"{est_time_text} | 🕒 ETA: **{completion_time}**")
         except Exception:
             pass
 

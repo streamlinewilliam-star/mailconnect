@@ -1,5 +1,3 @@
-
-You said:
 import streamlit as st
 import pandas as pd
 import base64
@@ -199,17 +197,19 @@ Thanks,
     )
 
     # ========================================
-    # ✅ ETA (Fixed to Local Time)
+    # ✅ "Ready to Send" Button + ETA (All Modes)
     # ========================================
-    if uploaded_file is not None:
+    eta_ready = st.button("🕒 Ready to Send / Calculate ETA")
+
+    if eta_ready:
         try:
             total_contacts = len(df)
-            avg_delay = delay
+            avg_delay = delay  # same delay for all modes
             total_seconds = total_contacts * avg_delay
             total_minutes = total_seconds / 60
 
-            # Local timezone fix (auto-convert)
-            local_tz = pytz.timezone("Asia/Kolkata")  # Change if needed
+            # Local timezone
+            local_tz = pytz.timezone("Asia/Kolkata")  # change if needed
             now_local = datetime.now(local_tz)
             eta_start = now_local
             eta_end = now_local + timedelta(seconds=total_seconds)
@@ -217,14 +217,14 @@ Thanks,
             eta_start_str = eta_start.strftime("%I:%M %p")
             eta_end_str = eta_end.strftime("%I:%M %p")
 
-            est_time_text = (
-                f"📋 Total: {total_contacts} | "
-                f"⏳ Duration: {total_minutes:.1f} min (±10%) | "
-                f"🕒 ETA: **{eta_start_str} – {eta_end_str}**"
+            st.success(
+                f"📋 Total Recipients: {total_contacts}\n\n"
+                f"⏳ Estimated Duration: {total_minutes:.1f} min (±10%)\n\n"
+                f"🕒 ETA Window: **{eta_start_str} – {eta_end_str}** (Local Time)\n\n"
+                f"✅ Applies to all send modes: New, Follow-up, Draft"
             )
-            st.caption(est_time_text)
-        except Exception:
-            pass
+        except Exception as e:
+            st.warning(f"ETA calculation failed: {e}")
 
     # ========================================
     # Send Mode (with Save Draft)

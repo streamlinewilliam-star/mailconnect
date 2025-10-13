@@ -5,6 +5,8 @@ import time
 import re
 import json
 import random
+from datetime import datetime, timedelta
+import pytz
 from email.mime.text import MIMEText
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
@@ -195,23 +197,30 @@ Thanks,
     )
 
     # ========================================
-    # ✅ Estimated Completion Time (new feature)
+    # ✅ ETA (Fixed to Local Time)
     # ========================================
     if uploaded_file is not None:
         try:
             total_contacts = len(df)
-            avg_delay = delay  # seconds per email
+            avg_delay = delay
             total_seconds = total_contacts * avg_delay
             total_minutes = total_seconds / 60
-            total_hours = total_minutes / 60
-            completion_time = time.strftime("%I:%M %p", time.localtime(time.time() + total_seconds))
+
+            # Local timezone fix (auto-convert)
+            local_tz = pytz.timezone("Asia/Kolkata")  # Change if needed
+            now_local = datetime.now(local_tz)
+            eta_start = now_local
+            eta_end = now_local + timedelta(seconds=total_seconds)
+
+            eta_start_str = eta_start.strftime("%I:%M %p")
+            eta_end_str = eta_end.strftime("%I:%M %p")
 
             est_time_text = (
                 f"📋 Total: {total_contacts} | "
-                f"⏳ Duration: {total_hours:.2f} hr" if total_hours >= 1 else
-                f"📋 Total: {total_contacts} | ⏳ Duration: {total_minutes:.1f} min"
+                f"⏳ Duration: {total_minutes:.1f} min (±10%) | "
+                f"🕒 ETA: **{eta_start_str} – {eta_end_str}**"
             )
-            st.caption(f"{est_time_text} | 🕒 ETA: **{completion_time}**")
+            st.caption(est_time_text)
         except Exception:
             pass
 
@@ -232,7 +241,6 @@ Thanks,
         skipped, errors = [], []
 
         with st.spinner("📨 Processing emails... please wait."):
-
             if "ThreadId" not in df.columns:
                 df["ThreadId"] = None
             if "RfcMessageId" not in df.columns:

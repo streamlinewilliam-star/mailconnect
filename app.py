@@ -131,6 +131,9 @@ st.header("📤 Upload Recipient List")
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
+    # ⚠️ Add safety message
+    st.warning("⚠️ Upload maximum of 70–80 rows for smooth run and to protect your account from Gmail rate limits.")
+
     if uploaded_file.name.endswith("csv"):
         df = pd.read_csv(uploaded_file)
     else:
@@ -182,7 +185,14 @@ Thanks,
     # ========================================
     st.header("🏷️ Label & Timing Options")
     label_name = st.text_input("Gmail label to apply (new emails only)", value="Mail Merge Sent")
-    delay = st.number_input("Delay between emails (seconds)", min_value=0, max_value=90, value=60, step=5)
+    delay = st.number_input(
+        "Delay between emails (seconds)",
+        min_value=30,
+        max_value=300,
+        value=60,
+        step=5,
+        help="Applies to New, Follow-up, and Draft modes. Minimum 30 seconds for Gmail compliance."
+    )
 
     # ========================================
     # Send Mode (with Save Draft)
@@ -247,18 +257,15 @@ Thanks,
                         sent_msg = draft.get("message", {})
                         st.info(f"📝 Draft saved for {to_addr}")
 
-                        # 🕒 Add same delay for drafts
                         if delay > 0:
                             time.sleep(random.uniform(delay * 0.8, delay * 1.2))
-
                     else:
                         sent_msg = service.users().messages().send(userId="me", body=msg_body).execute()
 
-                        # 🕒 Delay between sends
                         if delay > 0:
                             time.sleep(random.uniform(delay * 0.8, delay * 1.2))
 
-                    # ✅ RFC Message-ID Fetch (same logic)
+                    # ✅ RFC Message-ID Fetch
                     message_id_header = None
                     for attempt in range(5):
                         time.sleep(random.uniform(2, 4))

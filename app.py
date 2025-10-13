@@ -195,6 +195,27 @@ Thanks,
     )
 
     # ========================================
+    # ✅ Estimated Completion Time (new feature)
+    # ========================================
+    if uploaded_file is not None:
+        try:
+            total_contacts = len(df)
+            avg_delay = delay  # seconds per email
+            total_seconds = total_contacts * avg_delay
+            total_minutes = total_seconds / 60
+            total_hours = total_minutes / 60
+            completion_time = time.strftime("%I:%M %p", time.localtime(time.time() + total_seconds))
+
+            est_time_text = (
+                f"📋 Total: {total_contacts} | "
+                f"⏳ Duration: {total_hours:.2f} hr" if total_hours >= 1 else
+                f"📋 Total: {total_contacts} | ⏳ Duration: {total_minutes:.1f} min"
+            )
+            st.caption(f"{est_time_text} | 🕒 ETA: **{completion_time}**")
+        except Exception:
+            pass
+
+    # ========================================
     # Send Mode (with Save Draft)
     # ========================================
     send_mode = st.radio(

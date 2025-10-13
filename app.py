@@ -1,3 +1,5 @@
+
+You said:
 import streamlit as st
 import pandas as pd
 import base64
@@ -193,39 +195,27 @@ Thanks,
         max_value=300,
         value=30,
         step=5,
-        help="Minimum 30 seconds delay required for safe Gmail sending. Applies to all modes."
+        help="Minimum 30 seconds delay required for safe Gmail sending. Applies to New, Follow-up, and Draft modes."
     )
 
     # ========================================
-    # ✅ Dynamic ETA (Auto updates)
+    # ✅ ETA (Fixed to Local Time)
     # ========================================
-    if uploaded_file is not None and not df.empty:
+    if uploaded_file is not None:
         try:
             total_contacts = len(df)
             avg_delay = delay
             total_seconds = total_contacts * avg_delay
             total_minutes = total_seconds / 60
 
-            # --- Local ETA using user offset ---
-            if "user_offset" not in st.session_state:
-                user_offset = st.number_input(
-                    "🕒 Local timezone offset from UTC (e.g., +5.5 for India)",
-                    min_value=-12.0, max_value=14.0, value=5.5, step=0.5,
-                    help="Adjust only if ETA doesn't match your local clock."
-                )
-                st.session_state["user_offset"] = user_offset
-
-            offset = timedelta(hours=st.session_state["user_offset"])
-            now_local = datetime.now(pytz.utc) + offset
+            # Local timezone fix (auto-convert)
+            local_tz = pytz.timezone("Asia/Kolkata")  # Change if needed
+            now_local = datetime.now(local_tz)
             eta_start = now_local
             eta_end = now_local + timedelta(seconds=total_seconds)
 
             eta_start_str = eta_start.strftime("%I:%M %p")
             eta_end_str = eta_end.strftime("%I:%M %p")
-
-            # Trigger key to detect updates
-            trigger_key = f"{subject_template}_{body_template}_{delay}_{len(df)}"
-            st.session_state["last_eta_key"] = trigger_key
 
             est_time_text = (
                 f"📋 Total: {total_contacts} | "
@@ -233,8 +223,8 @@ Thanks,
                 f"🕒 ETA: **{eta_start_str} – {eta_end_str}**"
             )
             st.caption(est_time_text)
-        except Exception as e:
-            st.warning(f"ETA unavailable: {e}")
+        except Exception:
+            pass
 
     # ========================================
     # Send Mode (with Save Draft)

@@ -360,9 +360,14 @@ Thanks,
             st.error(f"❌ Failed to process {len(errors)}: {errors}")
 
         csv = df.to_csv(index=False).encode("utf-8")
+
+        # Download file name based on label (sanitized)
+        safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
+        file_name = f"{safe_label}.csv"
+
         st.download_button(
             "⬇️ Download Updated CSV (with ThreadId + RfcMessageId)",
             csv,
-            "updated_mailmerge.csv",
+            file_name,
             "text/csv",
         )

@@ -135,7 +135,6 @@ service = build("gmail", "v1", credentials=creds)
 st.header("📤 Upload Recipient List")
 st.info("⚠️ Upload maximum of **70–80 contacts** for smooth operation and to protect your Gmail account.")
 
-# 🔁 Backup CSV recovery option
 if "last_saved_csv" in st.session_state:
     st.info("📁 Backup from previous session available:")
     st.download_button(
@@ -156,6 +155,17 @@ if uploaded_file:
     st.write("✅ Preview of uploaded data:")
     st.dataframe(df.head())
     st.info("📌 Include 'ThreadId' and 'RfcMessageId' columns for follow-ups if needed.")
+
+    # ========================================
+    # 🧹 Edit unsubscribed/unwanted rows
+    # ========================================
+    df = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="recipient_editor_inline",
+        disabled=False
+    )
 
     # ========================================
     # Email Template
@@ -206,11 +216,11 @@ Thanks,
 
     delay = st.slider(
         "Delay between emails (seconds)",
-        min_value=30,
-        max_value=300,
-        value=30,
-        step=5,
-        help="Minimum 30 seconds delay required for safe Gmail sending."
+        min_value=20,
+        max_value=75,
+        value=20,
+        step=1,
+        help="Minimum 20 seconds delay required for safe Gmail sending."
     )
 
     eta_ready = st.button("🕒 Ready to Send / Calculate ETA")
@@ -240,7 +250,6 @@ Thanks,
     # Helper: Backup email function
     # ========================================
     def send_email_backup(service, csv_path):
-        """Send backup CSV to the authenticated Gmail account."""
         try:
             user_profile = service.users().getProfile(userId="me").execute()
             user_email = user_profile.get("emailAddress")
@@ -271,7 +280,7 @@ Thanks,
             st.warning(f"⚠️ Could not send backup email: {e}")
 
     # ========================================
-    # Main Send/Draft Button
+    # 🚀 Send Emails / Save Drafts
     # ========================================
     if st.button("🚀 Send Emails / Save Drafts"):
         label_id = get_or_create_label(service, label_name)
@@ -363,37 +372,42 @@ Thanks,
                     errors.append((to_addr, str(e)))
 
         # ========================================
-        # Summary
+        # CSV Backup + Download (New & Follow-up only)
         # ========================================
-        if send_mode == "💾 Save as Draft":
+        if send_mode in ["🆕 New Email", "↩️ Follow-up (Reply)"]:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
+                file_name = f"Updated_{safe_label}_{timestamp}.csv"
+                file_path = os.path.join("/tmp", file_name)
+
+                # Save updated CSV
+                df.to_csv(file_path, index=False)
+                st.session_state["last_saved_csv"] = file_path
+                st.session_state["last_saved_name"] = file_name
+
+                st.success("✅ Updated CSV saved successfully (can be used for follow-ups).")
+
+                # Manual download button
+                with open(file_path, "rb") as f:
+                    st.download_button(
+                        "⬇️ Download Updated CSV",
+                        data=f,
+                        file_name=file_name,
+                        mime="text/csv",
+                        key=f"download_{file_name}"
+                    )
+
+                # Send CSV backup email
+                send_email_backup(service, file_path)
+
+            except Exception as e:
+                st.error(f"⚠️ CSV save or backup email failed: {e}")
+
+        else:  # Draft mode summary
             st.success(f"📝 Saved {sent_count} draft(s) to Gmail Drafts.")
-        else:
-            st.success(f"✅ Successfully processed {sent_count} emails.")
 
         if skipped:
             st.warning(f"⚠️ Skipped {len(skipped)} invalid emails: {skipped}")
         if errors:
             st.error(f"❌ Failed to process {len(errors)}: {errors}")
-
-        # ========================================
-        # Hybrid Backup (Auto-save + Email)
-        # ========================================
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
-        file_name = f"Updated_{safe_label}_{timestamp}.csv"
-        file_path = os.path.join("/tmp", file_name)
-
-        df.to_csv(file_path, index=False)
-        st.session_state["last_saved_csv"] = file_path
-        st.session_state["last_saved_name"] = file_name
-        st.success("✅ Updated data auto-saved safely on server (backup).")
-
-        st.download_button(
-            "⬇️ Download Updated CSV",
-            data=open(file_path, "rb"),
-            file_name=file_name,
-            mime="text/csv",
-        )
-
-        # Send Gmail backup
-        send_email_backup(service, file_path)

@@ -231,10 +231,10 @@ if not st.session_state["sending"]:
 
         st.markdown("---")
         st.subheader("🧩 Step 2: Email Template")
-        subject_template = st.text_input("✉️ Subject", "Hello {Name}")
+        subject_template = st.text_input("✉️ Subject", "{Name Company}")
         body_template = st.text_area(
             "📝 Body (Markdown + Variables like {Name})",
-            """Dear {Name},
+            """Hi {First Name},
 
 Welcome to **Mail Merge App** demo.
 
@@ -243,7 +243,7 @@ Thanks,
             height=250,
         )
 
-        label_name = st.text_input("🏷️ Gmail label", "Mail Merge Sent")
+        label_name = st.text_input("🏷️ Gmail label", "enter a label name")
         delay = st.slider("⏱️ Delay between emails (seconds)", 20, 75, 20)
         send_mode = st.radio("📬 Choose send mode", ["🆕 New Email", "↩️ Follow-up (Reply)", "💾 Save as Draft"])
 

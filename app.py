@@ -1,4 +1,4 @@
-# ======================================== 
+# ========================================
 # Gmail Mail Merge Tool - Modern UI Edition
 # (Encoding Fix + Draft Default 110 + Reply Draft Support + ETA)
 # ========================================
@@ -68,6 +68,56 @@ CLIENT_CONFIG = {
 DONE_FILE = "/tmp/mailmerge_done.json"
 BATCH_SIZE_DEFAULT = 50
 DRAFT_BATCH_SIZE_DEFAULT = 110  # default batch for draft mode
+
+# ========================================
+# Predefined Follow-up Templates (added)
+# ========================================
+FOLLOW_UP_TEMPLATES = {
+    "Follow 1": """Hi {First Name},
+
+Hope you’ve been doing well. Would you like to get a **few sample contacts** to check our list accuracy?
+
+Please let me know your requirements.
+
+Thanks For your Time,
+**William**
+Business Development Manager | Streamline Data
+""",
+
+"Follow 2": """Hi {First Name},
+
+Have you reviewed my previous email? 
+
+Let me know your thoughts.
+
+Thanks For your Time,
+**William**
+Business Development Manager | Streamline Data
+""",
+
+    "Follow 3": """  Hi {First Name},
+
+I wanted to circle back on my last message. Would you like to see a **few sample contacts** to have an idea on our database
+
+Looking forward to hearing from you.
+
+Thanks For your Time,
+**William**
+Business Development Manager | Streamline Data
+""",
+
+
+    "Follow 4": """Hi {First Name},
+
+This is my final follow , **May be you're missed my previous Mails**  if you’d like me to send over a sample list of verified  decision-makers for your review.
+
+Looking forward to your response.
+
+Thanks For your Time,
+**William**
+Business Development Manager | Streamline Data
+""",
+}
 
 # ========================================
 # Recovery Logic
@@ -231,17 +281,42 @@ if not st.session_state["sending"]:
 
         st.markdown("---")
         st.subheader("🧩 Step 2: Email Template")
-        subject_template = st.text_input("✉️ Subject", "{Name Company}")
-        body_template = st.text_area(
-            "📝 Body (Markdown + Variables like {Name})",
-            """Hi {First Name},
+
+        # --- NEW: Follow-up Template Selector (non-invasive insertion) ---
+        # initialize persistent editor state if missing
+        if "body_template" not in st.session_state:
+            st.session_state["body_template"] = """Hi {First Name},
 
 Welcome to **Mail Merge App** demo.
 
 Thanks,  
-**Your Company**""",
+**Your Company**"""
+
+        selected_follow = st.radio(
+            "📌 Load a follow-up template (select 'Custom' to keep editor contents)",
+            ["Custom", "Follow 1", "Follow 2", "Follow 3", "Follow 4"],
+            horizontal=True
+        )
+
+        # Only update the editor when user chooses a follow template (non-destructive)
+        if selected_follow != "Custom":
+            # set session body_template from predefined templates
+            st.session_state["body_template"] = FOLLOW_UP_TEMPLATES.get(selected_follow, st.session_state["body_template"])
+        # --- END NEW BLOCK ---
+
+        subject_template = st.text_input("✉️ Subject", "{Company Name}")
+        body_template = st.text_area(
+            "📝 Body (Markdown + Variables like {Name})",
+            st.session_state.get("body_template", """Hi {First Name},
+
+Welcome to **Mail Merge App** demo.
+
+Thanks,  
+**Your Company**"""),
             height=250,
         )
+        # persist any manual edits to the body back to session_state
+        st.session_state["body_template"] = body_template
 
         label_name = st.text_input("🏷️ Gmail label", "enter a label name")
         delay = st.slider("⏱️ Delay between emails (seconds)", 20, 75, 20)

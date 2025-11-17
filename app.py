@@ -84,7 +84,7 @@ Thanks For your Time,
 Business Development Manager | Streamline Data
 """,
 
-"Follow 2": """Hi {First Name},
+    "Follow 2": """Hi {First Name},
 
 Have you reviewed my previous email? 
 
@@ -105,7 +105,6 @@ Thanks For your Time,
 **William**
 Business Development Manager | Streamline Data
 """,
-
 
     "Follow 4": """Hi {First Name},
 
@@ -275,6 +274,23 @@ if not st.session_state["sending"]:
             if col not in df.columns:
                 df[col] = ""
 
+        # ============================================================
+        # 🔍 EMAIL SEARCH FEATURE (NO UI CHANGE / NON-DESTRUCTIVE)
+        # ============================================================
+        with st.expander("🔍 Search a specific email in your uploaded list"):
+            search_email = st.text_input("Enter email to search:", key="email_search_box")
+            if st.button("Search Email", key="email_search_button"):
+                if "Email" in df.columns:
+                    result = df[df["Email"].astype(str).str.lower() == search_email.lower()]
+                    if not result.empty:
+                        st.success("✅ Email found.")
+                        st.dataframe(result)
+                    else:
+                        st.error("❌ Email not found.")
+                else:
+                    st.error("Your file does not contain an 'Email' column.")
+        # ============================================================
+
         st.info("📌 Tip: Include 'ThreadId' and 'RfcMessageId' for follow-ups if available.")
         st.markdown("### ✏️ Edit Your Contact List")
         df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
@@ -282,8 +298,7 @@ if not st.session_state["sending"]:
         st.markdown("---")
         st.subheader("🧩 Step 2: Email Template")
 
-        # --- NEW: Follow-up Template Selector (non-invasive insertion) ---
-        # initialize persistent editor state if missing
+        # --- NEW: Follow-up Template Selector ---
         if "body_template" not in st.session_state:
             st.session_state["body_template"] = """Hi {First Name},
 
@@ -298,11 +313,8 @@ Thanks,
             horizontal=True
         )
 
-        # Only update the editor when user chooses a follow template (non-destructive)
         if selected_follow != "Custom":
-            # set session body_template from predefined templates
             st.session_state["body_template"] = FOLLOW_UP_TEMPLATES.get(selected_follow, st.session_state["body_template"])
-        # --- END NEW BLOCK ---
 
         subject_template = st.text_input("✉️ Subject", "{Company Name}")
         body_template = st.text_area(
@@ -315,7 +327,6 @@ Thanks,
 **Your Company**"""),
             height=250,
         )
-        # persist any manual edits to the body back to session_state
         st.session_state["body_template"] = body_template
 
         label_name = st.text_input("🏷️ Gmail label", "enter a label name")
@@ -427,7 +438,6 @@ if st.session_state["sending"]:
                 msg_body = {"raw": raw}
 
             if send_mode == "💾 Save as Draft":
-                # Draft mode works for both new emails and replies
                 service.users().drafts().create(userId="me", body={"message": msg_body}).execute()
                 df.loc[idx, "Status"] = "Draft"
             else:
@@ -457,7 +467,6 @@ if st.session_state["sending"]:
         except Exception as e:
             st.warning(f"⚠️ Labeling failed: {e}")
 
-    # Save updated CSV & backup email
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_label = re.sub(r'[^A-Za-z0-9_-]', '_', label_name)
     file_name = f"Updated_{safe_label}_{timestamp}.csv"

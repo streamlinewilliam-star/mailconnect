@@ -304,8 +304,10 @@ if not st.session_state["sending"]:
 
 Welcome to **Mail Merge App** demo.
 
-Thanks,  
-**Your Company**"""
+Quick reply options: (Just click A or B)
+ <a href="mailto:ranjithganesan1990@gmail.com?subject=Interest%20In%20your%20Data&body=Need%20Bulk%20Contracts"> A) Need Bulk Contacts </a>
+<a href="mailto:ranjithganesan1990@gmail.com?subject=Interest%20In%20your%20Data&body=Need%20Sample%20Contracts">B) Need Free Sample First </a>
+"""
 
         selected_follow = st.radio(
             "📌 Load a follow-up template (select 'Custom' to keep editor contents)",
